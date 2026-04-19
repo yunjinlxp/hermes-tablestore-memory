@@ -31,11 +31,15 @@ one external memory backend alongside them.
 
 ## Requirements
 
-- Hermes Agent installed
+- Hermes Agent `v0.10.0` or newer (`2026-04-16` or later)
 - Python environment used by Hermes can install `tablestore==6.4.5`
 - A reachable TableStore OTS endpoint with memory APIs enabled
 - A TableStore access key pair with permission to access the target instance
 - An existing memory store name, or permission to create one
+
+`v0.9.0` may install the repository under `~/.hermes/plugins/` but still fail
+to detect it as an external memory provider. Upgrade Hermes first if
+`hermes memory status` shows `Plugin: NOT installed`.
 
 ## Install
 
@@ -55,6 +59,20 @@ Hermes installs the plugin into:
 
 ```text
 ~/.hermes/plugins/tablestore-mem/
+```
+
+Important: `hermes plugins install ...` installs the plugin files, but does
+not reliably install Python runtime dependencies for memory providers. After
+installation, either:
+
+- run `hermes memory setup` and select `tablestore-mem` so Hermes can install
+  `pip_dependencies` from `plugin.yaml`, or
+- install the SDK manually into the exact Python environment used by `hermes`
+
+Manual install example:
+
+```bash
+uv pip install --python "$(head -n 1 "$(which hermes)" | sed 's/^#!//')" tablestore==6.4.5
 ```
 
 ### Manual install
@@ -83,6 +101,9 @@ hermes memory setup
 
 Select `tablestore-mem` from the provider list.
 
+This step also installs any missing Python dependencies declared by the plugin,
+including `tablestore==6.4.5`.
+
 Or activate manually:
 
 ```bash
@@ -97,32 +118,20 @@ Secrets should go into:
 ~/.hermes/.env
 ```
 
-Non-secret provider settings can live in:
+All non-secret provider settings should go into:
 
 ```text
 $HERMES_HOME/tablestore_memory.json
 ```
 
-### Required environment variables
+### Environment variables
 
 ```bash
 TABLESTORE_MEMORY_AK=your_access_key_id
 TABLESTORE_MEMORY_SK=your_access_key_secret
-TABLESTORE_MEMORY_ENDPOINT=https://your-instance.region.ots.aliyuncs.com
-TABLESTORE_MEMORY_INSTANCE=your-instance-name
-TABLESTORE_MEMORY_STORE=hermes_mem
 ```
 
-### Optional environment variables
-
-```bash
-TABLESTORE_MEMORY_APP_ID=hermes
-TABLESTORE_MEMORY_TENANT_ID=
-TABLESTORE_MEMORY_DESCRIPTION=
-TABLESTORE_MEMORY_ENABLE_RERANK=true
-TABLESTORE_MEMORY_AUTO_CREATE_STORE=true
-TABLESTORE_MEMORY_TIMEOUT=30
-```
+Only these two secret fields belong in `.env`.
 
 ### Example `tablestore_memory.json`
 
@@ -131,7 +140,9 @@ TABLESTORE_MEMORY_TIMEOUT=30
   "endpoint": "https://your-instance.region.ots.aliyuncs.com",
   "instance_name": "your-instance-name",
   "memory_store_name": "hermes_mem",
+  "description": "",
   "app_id": "hermes",
+  "tenant_id": "",
   "enable_rerank": true,
   "auto_create_store": true,
   "timeout": 30.0
@@ -140,6 +151,17 @@ TABLESTORE_MEMORY_TIMEOUT=30
 
 If the user does not specify a memory store name, the plugin defaults to
 `hermes_mem` and automatically creates it when missing.
+
+Current built-in defaults:
+
+- `endpoint`: `https://127.0.0.1`
+- `memory_store_name`: `hermes_mem`
+- `app_id`: `hermes`
+- `tenant_id`: empty string, then resolved from session or `__default__`
+- `description`: empty string
+- `enable_rerank`: `true`
+- `auto_create_store`: `true`
+- `timeout`: `30`
 
 ## How scope works
 
@@ -152,11 +174,11 @@ appId / tenantId / agentId / runId
 Current field resolution:
 
 - `appId`
-  Source: user config if `TABLESTORE_MEMORY_APP_ID` or `app_id` is set.
+  Source: `app_id` in `tablestore_memory.json`.
   Default: `hermes`.
 - `tenantId`
   Source: Hermes session `user_id` first.
-  Fallback: user config `TABLESTORE_MEMORY_TENANT_ID` or `tenant_id`.
+  Fallback: `tenant_id` in `tablestore_memory.json`.
   Default: `__default__`.
 - `agentId`
   Source: Hermes session identity, currently `agent_identity`.
@@ -171,6 +193,13 @@ Current field resolution:
 This means only `appId` and `tenantId` are user-facing configuration inputs.
 `agentId` and `runId` are intentionally session-derived so users do not need
 to manage them manually.
+
+Configuration source summary:
+
+- `.env`: only `TABLESTORE_MEMORY_AK` and `TABLESTORE_MEMORY_SK`
+- `tablestore_memory.json`: endpoint, instance, store, scope defaults, rerank,
+  auto-create, timeout, and description
+- session context: `tenantId` override via `user_id`, plus `agentId` and `runId`
 
 Write scope and search scope are intentionally different:
 
@@ -207,7 +236,7 @@ If the plugin is installed but `tablestore` is not yet available in the
 Python environment Hermes is using, install the declared dependency first:
 
 ```bash
-uv pip install --python /path/to/hermes/venv/bin/python tablestore==6.4.5
+uv pip install --python "$(head -n 1 "$(which hermes)" | sed 's/^#!//')" tablestore==6.4.5
 ```
 
 ## CLI commands
@@ -252,10 +281,10 @@ Notes:
 
 Usually one of these values is missing:
 
-- `TABLESTORE_MEMORY_ENDPOINT`
-- `TABLESTORE_MEMORY_INSTANCE`
 - `TABLESTORE_MEMORY_AK`
 - `TABLESTORE_MEMORY_SK`
+- `endpoint` in `tablestore_memory.json`
+- `instance_name` in `tablestore_memory.json`
 
 Run:
 

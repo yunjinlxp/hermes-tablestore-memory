@@ -56,21 +56,21 @@ def _scope_piece(value: Any, default: str = "__default__") -> str:
 
 
 def _load_config() -> dict:
-    """Load config from env vars plus $HERMES_HOME/tablestore_memory.json overrides."""
+    """Load non-secret config from JSON and secrets from env."""
     from hermes_constants import get_hermes_home
 
     config = {
-        "endpoint": os.environ.get("TABLESTORE_MEMORY_ENDPOINT", _DEFAULT_ENDPOINT),
-        "instance_name": os.environ.get("TABLESTORE_MEMORY_INSTANCE", ""),
-        "memory_store_name": os.environ.get("TABLESTORE_MEMORY_STORE", _DEFAULT_MEMORY_STORE),
-        "description": os.environ.get("TABLESTORE_MEMORY_DESCRIPTION", ""),
-        "app_id": os.environ.get("TABLESTORE_MEMORY_APP_ID", "hermes"),
-        "tenant_id": os.environ.get("TABLESTORE_MEMORY_TENANT_ID", ""),
-        "access_key_id": os.environ.get("TABLESTORE_MEMORY_AK", ""),
-        "access_key_secret": os.environ.get("TABLESTORE_MEMORY_SK", ""),
-        "enable_rerank": _as_bool(os.environ.get("TABLESTORE_MEMORY_ENABLE_RERANK"), True),
-        "auto_create_store": _as_bool(os.environ.get("TABLESTORE_MEMORY_AUTO_CREATE_STORE"), True),
-        "timeout": float(os.environ.get("TABLESTORE_MEMORY_TIMEOUT", _DEFAULT_TIMEOUT)),
+        "endpoint": _DEFAULT_ENDPOINT,
+        "instance_name": "",
+        "memory_store_name": _DEFAULT_MEMORY_STORE,
+        "description": "",
+        "app_id": "hermes",
+        "tenant_id": "",
+        "access_key_id": "",
+        "access_key_secret": "",
+        "enable_rerank": True,
+        "auto_create_store": True,
+        "timeout": _DEFAULT_TIMEOUT,
     }
 
     config_path = get_hermes_home() / "tablestore_memory.json"
@@ -84,6 +84,8 @@ def _load_config() -> dict:
         except Exception as exc:
             logger.debug("Failed to load tablestore_memory.json: %s", exc)
 
+    config["access_key_id"] = os.environ.get("TABLESTORE_MEMORY_AK", "")
+    config["access_key_secret"] = os.environ.get("TABLESTORE_MEMORY_SK", "")
     config["endpoint"] = _clean_str(config.get("endpoint"), _DEFAULT_ENDPOINT)
     config["instance_name"] = _clean_str(config.get("instance_name"))
     config["memory_store_name"] = _clean_str(config.get("memory_store_name"), _DEFAULT_MEMORY_STORE)
@@ -379,15 +381,15 @@ class TableStoreMemoryProvider(MemoryProvider):
 
     def get_config_schema(self) -> List[Dict[str, Any]]:
         return [
-            {"key": "endpoint", "description": "TableStore OTS endpoint", "default": _DEFAULT_ENDPOINT, "env_var": "TABLESTORE_MEMORY_ENDPOINT"},
-            {"key": "instance_name", "description": "OTS instance name", "required": True, "env_var": "TABLESTORE_MEMORY_INSTANCE"},
-            {"key": "memory_store_name", "description": "Memory store name", "default": _DEFAULT_MEMORY_STORE, "env_var": "TABLESTORE_MEMORY_STORE"},
-            {"key": "app_id", "description": "Scope appId", "default": "hermes", "env_var": "TABLESTORE_MEMORY_APP_ID"},
-            {"key": "tenant_id", "description": "Default tenantId (gateway user_id overrides this)", "env_var": "TABLESTORE_MEMORY_TENANT_ID"},
-            {"key": "description", "description": "Store description used when auto-create is enabled", "env_var": "TABLESTORE_MEMORY_DESCRIPTION"},
-            {"key": "enable_rerank", "description": "Enable rerank for prefetch/search by default", "default": "true", "choices": ["true", "false"], "env_var": "TABLESTORE_MEMORY_ENABLE_RERANK"},
-            {"key": "auto_create_store", "description": "Auto-create memory store if missing", "default": "true", "choices": ["true", "false"], "env_var": "TABLESTORE_MEMORY_AUTO_CREATE_STORE"},
-            {"key": "timeout", "description": "OTS socket timeout in seconds", "default": str(_DEFAULT_TIMEOUT), "env_var": "TABLESTORE_MEMORY_TIMEOUT"},
+            {"key": "endpoint", "description": "TableStore OTS endpoint", "default": _DEFAULT_ENDPOINT},
+            {"key": "instance_name", "description": "OTS instance name", "required": True},
+            {"key": "memory_store_name", "description": "Memory store name", "default": _DEFAULT_MEMORY_STORE},
+            {"key": "app_id", "description": "Scope appId", "default": "hermes"},
+            {"key": "tenant_id", "description": "Default tenantId (gateway user_id overrides this)"},
+            {"key": "description", "description": "Store description used when auto-create is enabled"},
+            {"key": "enable_rerank", "description": "Enable rerank for prefetch/search by default", "default": "true", "choices": ["true", "false"]},
+            {"key": "auto_create_store", "description": "Auto-create memory store if missing", "default": "true", "choices": ["true", "false"]},
+            {"key": "timeout", "description": "OTS socket timeout in seconds", "default": str(_DEFAULT_TIMEOUT)},
             {"key": "access_key_id", "description": "TableStore access key id", "secret": True, "env_var": "TABLESTORE_MEMORY_AK"},
             {"key": "access_key_secret", "description": "TableStore access key secret", "secret": True, "env_var": "TABLESTORE_MEMORY_SK"},
         ]
