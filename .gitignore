@@ -1,0 +1,61 @@
+# Python bytecode/cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Build/package outputs
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Local TableStore/Hermes config snapshots
+tablestore_memory.json
+config.yaml
+auth.json
+
+# Test/coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# Type/lint caches
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+
+# Editors and OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs/runtime files
+*.log
+logs/
+tmp/
+temp/
