@@ -17,11 +17,26 @@ try:
 except Exception:
     OTSClient = None
 
+try:
+    from alibabacloud_credentials.client import Client as CredentialClient
+    from alibabacloud_tea_openapi import models as open_api_models
+    from alibabacloud_tablestore20201209.client import Client as Tablestore20201209Client
+    from alibabacloud_tablestore20201209 import models as tablestore_20201209_models
+    from alibabacloud_tea_util import models as util_models
+except Exception:
+    CredentialClient = None
+    open_api_models = None
+    Tablestore20201209Client = None
+    tablestore_20201209_models = None
+    util_models = None
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_ENDPOINT = "https://127.0.0.1"
 _DEFAULT_TIMEOUT = 30.0
 _DEFAULT_MEMORY_STORE = "hermes_mem"
+_DEFAULT_REGION = "cn-hangzhou"
+_DEFAULT_CONTROL_ENDPOINT = f"tablestore.{_DEFAULT_REGION}.aliyuncs.com"
 
 
 def _is_not_found_error(exc: Exception) -> bool:
@@ -53,6 +68,10 @@ def _clean_str(value: Any, default: str = "") -> str:
 def _scope_piece(value: Any, default: str = "__default__") -> str:
     text = _clean_str(value, "")
     return text if text else default
+
+
+def _build_instance_endpoint(instance_name: str, region: str = _DEFAULT_REGION) -> str:
+    return f"https://{instance_name}.{region}.ots.aliyuncs.com"
 
 
 def _load_config() -> dict:
@@ -248,6 +267,84 @@ class _TableStoreClient:
         )
 
 
+class _TableStoreControlClient:
+    """Control-plane helper for creating a TableStore VCU instance."""
+
+    def __init__(self, endpoint: str = _DEFAULT_CONTROL_ENDPOINT) -> None:
+        client_cls = Tablestore20201209Client
+        credential_cls = CredentialClient
+        config_cls = open_api_models.Config if open_api_models else None
+        if client_cls is None or credential_cls is None or config_cls is None:
+            from alibabacloud_credentials.client import Client as credential_cls
+            from alibabacloud_tea_openapi import models as open_api_models_local
+            from alibabacloud_tablestore20201209.client import Client as client_cls
+
+            config_cls = open_api_models_local.Config
+
+        credential = credential_cls()
+        config = config_cls(credential=credential)
+        config.endpoint = endpoint
+        self._client = client_cls(config)
+
+    def create_vcu_instance(self) -> dict:
+        request_cls = tablestore_20201209_models.CreateVCUInstanceRequest if tablestore_20201209_models else None
+        runtime_cls = util_models.RuntimeOptions if util_models else None
+        if request_cls is None or runtime_cls is None:
+            from alibabacloud_tablestore20201209 import models as tablestore_20201209_models_local
+            from alibabacloud_tea_util import models as util_models_local
+
+            request_cls = tablestore_20201209_models_local.CreateVCUInstanceRequest
+            runtime_cls = util_models_local.RuntimeOptions
+
+        request = request_cls(
+            cluster_type="SSD",
+            vcu=0,
+            period_in_month=1,
+            enable_elastic_vcu=True,
+            enable_auto_renew=True,
+            auto_renew_period_in_month=1,
+        )
+        response = self._client.create_vcuinstance_with_options(request, {}, runtime_cls())
+        if isinstance(response, dict):
+            return response
+        body = getattr(response, "body", None)
+        if body is not None:
+            if hasattr(body, "to_map"):
+                return body.to_map()
+            if isinstance(body, dict):
+                return body
+        if hasattr(response, "to_map"):
+            return response.to_map()
+        raise RuntimeError("CreateVCUInstance returned an unexpected response payload.")
+
+    def update_instance_network_acl(self, instance_name: str, acl: List[str]) -> dict:
+        request_cls = tablestore_20201209_models.UpdateInstanceRequest if tablestore_20201209_models else None
+        runtime_cls = util_models.RuntimeOptions if util_models else None
+        if request_cls is None or runtime_cls is None:
+            from alibabacloud_tablestore20201209 import models as tablestore_20201209_models_local
+            from alibabacloud_tea_util import models as util_models_local
+
+            request_cls = tablestore_20201209_models_local.UpdateInstanceRequest
+            runtime_cls = util_models_local.RuntimeOptions
+
+        request = request_cls(
+            instance_name=instance_name,
+            network_type_acl=acl,
+        )
+        response = self._client.update_instance_with_options(request, {}, runtime_cls())
+        if isinstance(response, dict):
+            return response
+        body = getattr(response, "body", None)
+        if body is not None:
+            if hasattr(body, "to_map"):
+                return body.to_map()
+            if isinstance(body, dict):
+                return body
+        if hasattr(response, "to_map"):
+            return response.to_map()
+        return {}
+
+
 PROFILE_SCHEMA = {
     "name": "tablestore_profile",
     "description": (
@@ -360,13 +457,7 @@ class TableStoreMemoryProvider(MemoryProvider):
 
     def is_available(self) -> bool:
         cfg = _load_config()
-        return bool(
-            cfg.get("endpoint")
-            and cfg.get("instance_name")
-            and cfg.get("app_id")
-            and cfg.get("access_key_id")
-            and cfg.get("access_key_secret")
-        )
+        return bool(cfg.get("access_key_id") and cfg.get("access_key_secret"))
 
     def save_config(self, values: Dict[str, Any], hermes_home: str) -> None:
         config_path = Path(hermes_home) / "tablestore_memory.json"
@@ -382,7 +473,7 @@ class TableStoreMemoryProvider(MemoryProvider):
     def get_config_schema(self) -> List[Dict[str, Any]]:
         return [
             {"key": "endpoint", "description": "TableStore OTS endpoint", "default": _DEFAULT_ENDPOINT},
-            {"key": "instance_name", "description": "OTS instance name", "required": True},
+            {"key": "instance_name", "description": "OTS instance name (optional; auto-created when missing)"},
             {"key": "memory_store_name", "description": "Memory store name", "default": _DEFAULT_MEMORY_STORE},
             {"key": "app_id", "description": "Scope appId", "default": "hermes"},
             {"key": "tenant_id", "description": "Default tenantId (gateway user_id overrides this)"},
@@ -394,8 +485,52 @@ class TableStoreMemoryProvider(MemoryProvider):
             {"key": "access_key_secret", "description": "TableStore access key secret", "secret": True, "env_var": "TABLESTORE_MEMORY_SK"},
         ]
 
+    def _bootstrap_instance(self) -> Dict[str, str]:
+        try:
+            control_client = _TableStoreControlClient()
+            response = control_client.create_vcu_instance()
+        except Exception as exc:
+            message = getattr(exc, "message", str(exc))
+            recommend = ""
+            data = getattr(exc, "data", None)
+            if isinstance(data, dict):
+                recommend = _clean_str(data.get("Recommend"))
+            detail = f"Failed to create TableStore instance: {message}"
+            if recommend:
+                detail += f" ({recommend})"
+            raise RuntimeError(detail) from exc
+
+        instance_name = _clean_str(response.get("InstanceName"))
+        if not instance_name:
+            raise RuntimeError("CreateVCUInstance succeeded but did not return InstanceName.")
+        try:
+            control_client.update_instance_network_acl(
+                instance_name,
+                ["INTERNET", "VPC", "CLASSIC"],
+            )
+        except Exception as exc:
+            message = getattr(exc, "message", str(exc))
+            recommend = ""
+            data = getattr(exc, "data", None)
+            if isinstance(data, dict):
+                recommend = _clean_str(data.get("Recommend"))
+            detail = f"Failed to enable public network access for TableStore instance {instance_name}: {message}"
+            if recommend:
+                detail += f" ({recommend})"
+            raise RuntimeError(detail) from exc
+        return {
+            "instance_name": instance_name,
+            "endpoint": _build_instance_endpoint(instance_name),
+        }
+
     def initialize(self, session_id: str, **kwargs) -> None:
         self._config = _load_config()
+        if not self._config.get("instance_name"):
+            from hermes_constants import get_hermes_home
+
+            bootstrap_config = self._bootstrap_instance()
+            self.save_config(bootstrap_config, str(get_hermes_home()))
+            self._config = _load_config()
         self._session_id = session_id
         self._platform = _clean_str(kwargs.get("platform"), "cli")
         self._app_id = _scope_piece(self._config.get("app_id"), "hermes")

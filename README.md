@@ -32,10 +32,12 @@ one external memory backend alongside them.
 ## Requirements
 
 - Hermes Agent `v0.10.0` or newer (`2026-04-16` or later)
-- Python environment used by Hermes can install `tablestore==6.4.5`
-- A reachable TableStore OTS endpoint with memory APIs enabled
-- A TableStore access key pair with permission to access the target instance
-- An existing memory store name, or permission to create one
+- Python environment used by Hermes can install:
+  - `tablestore==6.4.5`
+  - `alibabacloud-tablestore20201209`
+  - `alibabacloud-credentials`
+- A TableStore access key pair with permission to create or access the target instance
+- Permission to create the memory store if it does not already exist
 
 `v0.9.0` may install the repository under `~/.hermes/plugins/` but still fail
 to detect it as an external memory provider. Upgrade Hermes first if
@@ -72,7 +74,10 @@ installation, either:
 Manual install example:
 
 ```bash
-uv pip install --python "$(head -n 1 "$(which hermes)" | sed 's/^#!//')" tablestore==6.4.5
+uv pip install --python "$(head -n 1 "$(which hermes)" | sed 's/^#!//')" \
+  tablestore==6.4.5 \
+  alibabacloud-tablestore20201209 \
+  alibabacloud-credentials
 ```
 
 ### Manual install
@@ -86,7 +91,10 @@ Copy this repository into:
 Then install the SDK dependency into the Python environment used by Hermes:
 
 ```bash
-uv pip install --python "$(which python)" tablestore==6.4.5
+uv pip install --python "$(which python)" \
+  tablestore==6.4.5 \
+  alibabacloud-tablestore20201209 \
+  alibabacloud-credentials
 ```
 
 If Hermes runs from a venv, use that interpreter explicitly instead.
@@ -102,7 +110,8 @@ hermes memory setup
 Select `tablestore-mem` from the provider list.
 
 This step also installs any missing Python dependencies declared by the plugin,
-including `tablestore==6.4.5`.
+including `tablestore==6.4.5`, `alibabacloud-tablestore20201209`, and
+`alibabacloud-credentials`.
 
 Or activate manually:
 
@@ -137,8 +146,6 @@ Only these two secret fields belong in `.env`.
 
 ```json
 {
-  "endpoint": "https://your-instance.region.ots.aliyuncs.com",
-  "instance_name": "your-instance-name",
   "memory_store_name": "hermes_mem",
   "description": "",
   "app_id": "hermes",
@@ -149,12 +156,24 @@ Only these two secret fields belong in `.env`.
 }
 ```
 
+On first initialization, if `instance_name` is missing, the plugin will:
+
+- create a TableStore VCU instance through the Alibaba Cloud control-plane API
+- update the new instance network ACL to allow `INTERNET`, `VPC`, and `CLASSIC`
+- derive the data-plane endpoint as
+  `https://{instance_name}.cn-hangzhou.ots.aliyuncs.com`
+- persist both `instance_name` and `endpoint` back into
+  `tablestore_memory.json`
+
+After that, Hermes reuses the same persisted instance for all later runs.
+
 If the user does not specify a memory store name, the plugin defaults to
 `hermes_mem` and automatically creates it when missing.
 
 Current built-in defaults:
 
-- `endpoint`: `https://127.0.0.1`
+- `endpoint`: auto-derived after first instance bootstrap if not already saved
+- `instance_name`: auto-created after first instance bootstrap if not already saved
 - `memory_store_name`: `hermes_mem`
 - `app_id`: `hermes`
 - `tenant_id`: empty string, then resolved from session or `__default__`
@@ -232,11 +251,14 @@ flow from a prompt:
 2. Ask Hermes to search for that fact.
 3. Optionally delete the stored memory by id.
 
-If the plugin is installed but `tablestore` is not yet available in the
-Python environment Hermes is using, install the declared dependency first:
+If the plugin is installed but the required SDKs are not yet available in the
+Python environment Hermes is using, install the declared dependencies first:
 
 ```bash
-uv pip install --python "$(head -n 1 "$(which hermes)" | sed 's/^#!//')" tablestore==6.4.5
+uv pip install --python "$(head -n 1 "$(which hermes)" | sed 's/^#!//')" \
+  tablestore==6.4.5 \
+  alibabacloud-tablestore20201209 \
+  alibabacloud-credentials
 ```
 
 ## CLI commands
@@ -263,9 +285,14 @@ Notes:
 ## Operational notes
 
 - The plugin uses `tablestore.OTSClient` memory methods directly.
+- The plugin uses Alibaba Cloud control-plane OpenAPI once for first-run
+  instance bootstrap when `instance_name` is missing.
+- During first-run bootstrap, the plugin also enables public access on the new
+  instance by setting `network_type_acl` to `INTERNET`, `VPC`, and `CLASSIC`.
 - Request signing and authentication are handled by the OTS SDK.
 - `is_available()` only checks local config presence and does not do network
-  calls, which matches Hermes plugin expectations.
+  calls. It now only requires `AK/SK`; missing `instance_name` is handled by
+  bootstrap during initialization.
 - `sync_turn()` runs asynchronously in a daemon thread to avoid blocking the
   agent loop.
 - explicit `tablestore_remember` writes are asynchronous by default unless
@@ -283,8 +310,7 @@ Usually one of these values is missing:
 
 - `TABLESTORE_MEMORY_AK`
 - `TABLESTORE_MEMORY_SK`
-- `endpoint` in `tablestore_memory.json`
-- `instance_name` in `tablestore_memory.json`
+- or the required Python SDK dependencies are not installed yet
 
 Run:
 
@@ -297,9 +323,13 @@ hermes memory status
 Check:
 
 - the endpoint is an OTS endpoint, not a separate application gateway
-- the instance name is correct
+- the persisted instance endpoint matches the auto-derived format
+  `https://{instance_name}.cn-hangzhou.ots.aliyuncs.com`
 - the AK/SK pair has permission for the target instance
-- the SDK version is `tablestore==6.4.5`
+- the SDK versions are installed:
+  - `tablestore==6.4.5`
+  - `alibabacloud-tablestore20201209`
+  - `alibabacloud-credentials`
 
 ### Search does not return the original raw text
 
@@ -309,10 +339,14 @@ facts rather than the exact original sentence.
 
 ### First write is slow
 
-If `hermes_mem` does not exist yet and automatic creation is enabled, the
-first write may take longer than a normal request because the provider first
-creates the memory store and then writes into it. The default timeout is
-`30` seconds.
+The first write may take longer than a normal request when Hermes has to do one
+or both of the following before writing memory data:
+
+- bootstrap a new TableStore instance and enable `INTERNET`/`VPC`/`CLASSIC`
+  network access on that instance
+- create the `hermes_mem` memory store when it does not exist yet
+
+The default timeout is `30` seconds.
 
 ## Repository layout
 

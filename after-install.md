@@ -12,13 +12,17 @@ hermes memory setup
 
 This is the recommended activation path. It sets `memory.provider` and lets
 Hermes install missing `pip_dependencies` declared by this plugin, including
-`tablestore==6.4.5`.
+`tablestore==6.4.5`, `alibabacloud-tablestore20201209`, and
+`alibabacloud-credentials`.
 
 2. If setup reports that dependency installation failed, install the SDK into
    the same interpreter used by `hermes`:
 
 ```bash
-uv pip install --python "$(head -n 1 "$(which hermes)" | sed 's/^#!//')" tablestore==6.4.5
+uv pip install --python "$(head -n 1 "$(which hermes)" | sed 's/^#!//')" \
+  tablestore==6.4.5 \
+  alibabacloud-tablestore20201209 \
+  alibabacloud-credentials
 ```
 
 3. Add credentials to `~/.hermes/.env`:
@@ -32,8 +36,6 @@ TABLESTORE_MEMORY_SK=your_access_key_secret
 
 ```json
 {
-  "endpoint": "https://your-instance.region.ots.aliyuncs.com",
-  "instance_name": "your-instance-name",
   "memory_store_name": "hermes_mem",
   "description": "",
   "app_id": "hermes",
@@ -43,6 +45,12 @@ TABLESTORE_MEMORY_SK=your_access_key_secret
   "timeout": 30.0
 }
 ```
+
+If `instance_name` is missing, the plugin automatically creates a VCU instance
+on first initialization, enables `INTERNET`/`VPC`/`CLASSIC` network access on
+that new instance, derives the endpoint as
+`https://{instance_name}.cn-hangzhou.ots.aliyuncs.com`, and persists both
+fields for reuse.
 
 If `memory_store_name` is omitted, the plugin uses `hermes_mem` and creates it
 automatically when missing.
