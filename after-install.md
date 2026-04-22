@@ -49,7 +49,7 @@ TABLESTORE_MEMORY_SK=your_access_key_secret
 If `instance_name` is missing, the plugin automatically creates a VCU instance
 on first initialization, enables `INTERNET`/`VPC`/`CLASSIC` network access on
 that new instance, derives the endpoint as
-`https://{instance_name}.cn-hangzhou.ots.aliyuncs.com`, and persists both
+`https://{instance_name}.cn-beijing.ots.aliyuncs.com`, and persists both
 fields for reuse.
 
 If `memory_store_name` is omitted, the plugin uses `hermes_mem` and creates it
@@ -83,4 +83,8 @@ CLI commands are also available when `tablestore-mem` is the active provider:
 ```bash
 hermes tablestore-mem add "Remember this fact"
 hermes tablestore-mem search "this fact"
+hermes tablestore-mem doctor
 ```
+
+`doctor` performs read-only diagnostics for provider initialization,
+`DescribeMemoryStore`, and `ListMemories`.

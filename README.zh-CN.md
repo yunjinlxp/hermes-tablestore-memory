@@ -160,7 +160,7 @@ TABLESTORE_MEMORY_SK=your_access_key_secret
 - 通过阿里云控制面 API 自动创建一个 TableStore VCU 实例
 - 把新实例的 `network_type_acl` 设置为 `INTERNET`、`VPC`、`CLASSIC`
 - 根据规则拼接数据面 endpoint：
-  `https://{instance_name}.cn-hangzhou.ots.aliyuncs.com`
+  `https://{instance_name}.cn-beijing.ots.aliyuncs.com`
 - 把 `instance_name` 和 `endpoint` 自动写回 `tablestore_memory.json`
 
 之后 Hermes 会一直复用这份已经持久化的实例配置。
@@ -264,6 +264,7 @@ hermes tablestore-mem add "用户喜欢 Rust" --metadata source=manual --metadat
 hermes tablestore-mem add "同步写入这条记忆" --sync
 hermes tablestore-mem search "简洁回答"
 hermes tablestore-mem search "Rust" --top-k 10
+hermes tablestore-mem doctor
 ```
 
 说明：
@@ -271,8 +272,16 @@ hermes tablestore-mem search "Rust" --top-k 10
 - `hermes tablestore-mem add` 通过 provider 写入一条记忆
 - `hermes tablestore-mem add` 默认异步写入；传入 `--sync` 才会等待写入完成
 - `hermes tablestore-mem search` 返回 JSON 检索结果
+- `hermes tablestore-mem doctor` 执行只读诊断
 - `--metadata KEY=VALUE` 可以重复使用
 - 这些 CLI 命令只有在 `tablestore-mem` 是当前激活的 memory provider 时才会注册
+
+`doctor` 命令会执行只读诊断，包括：
+
+- 初始化 provider
+- 通过 `get_memory_store` 调用 `DescribeMemoryStore`
+- 调用 `ListMemories`
+- 返回结构化 JSON，方便用户直接贴出来排障
 
 ## 运行说明
 
@@ -308,7 +317,7 @@ hermes memory status
 
 - endpoint 是否真的是 OTS endpoint，而不是别的业务网关
 - endpoint 是否符合自动生成规则
-  `https://{instance_name}.cn-hangzhou.ots.aliyuncs.com`
+  `https://{instance_name}.cn-beijing.ots.aliyuncs.com`
 - AK/SK 是否对该实例有权限
 - SDK 是否已经安装：
   - `tablestore==6.4.5`

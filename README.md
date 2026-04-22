@@ -161,7 +161,7 @@ On first initialization, if `instance_name` is missing, the plugin will:
 - create a TableStore VCU instance through the Alibaba Cloud control-plane API
 - update the new instance network ACL to allow `INTERNET`, `VPC`, and `CLASSIC`
 - derive the data-plane endpoint as
-  `https://{instance_name}.cn-hangzhou.ots.aliyuncs.com`
+  `https://{instance_name}.cn-beijing.ots.aliyuncs.com`
 - persist both `instance_name` and `endpoint` back into
   `tablestore_memory.json`
 
@@ -271,6 +271,7 @@ hermes tablestore-mem add "User likes Rust" --metadata source=manual --metadata 
 hermes tablestore-mem add "Write this synchronously" --sync
 hermes tablestore-mem search "concise answers"
 hermes tablestore-mem search "Rust" --top-k 10
+hermes tablestore-mem doctor
 ```
 
 Notes:
@@ -278,9 +279,17 @@ Notes:
 - `hermes tablestore-mem add` writes one memory payload through the provider.
 - `hermes tablestore-mem add` is asynchronous by default; pass `--sync` to wait.
 - `hermes tablestore-mem search` returns JSON search results.
+- `hermes tablestore-mem doctor` runs read-only diagnostics.
 - `--metadata KEY=VALUE` can be repeated.
 - These CLI commands are only registered when `tablestore-mem` is the active
   external memory provider.
+
+The `doctor` command performs read-only diagnostics by:
+
+- initializing the provider
+- calling `DescribeMemoryStore` through `get_memory_store`
+- calling `ListMemories`
+- returning structured JSON suitable for debugging support requests
 
 ## Operational notes
 
@@ -324,7 +333,7 @@ Check:
 
 - the endpoint is an OTS endpoint, not a separate application gateway
 - the persisted instance endpoint matches the auto-derived format
-  `https://{instance_name}.cn-hangzhou.ots.aliyuncs.com`
+  `https://{instance_name}.cn-beijing.ots.aliyuncs.com`
 - the AK/SK pair has permission for the target instance
 - the SDK versions are installed:
   - `tablestore==6.4.5`

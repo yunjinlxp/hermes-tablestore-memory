@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_ENDPOINT = "https://127.0.0.1"
 _DEFAULT_TIMEOUT = 30.0
 _DEFAULT_MEMORY_STORE = "hermes_mem"
-_DEFAULT_REGION = "cn-hangzhou"
+_DEFAULT_REGION = "cn-beijing"
 _DEFAULT_CONTROL_ENDPOINT = f"tablestore.{_DEFAULT_REGION}.aliyuncs.com"
 
 
@@ -573,6 +573,59 @@ class TableStoreMemoryProvider(MemoryProvider):
             "direct snapshot, tablestore_remember to persist facts, and "
             "tablestore_forget to delete by id."
         )
+
+    def run_doctor(self) -> Dict[str, Any]:
+        checks: Dict[str, Any] = {
+            "initialize": {"ok": bool(self._client)},
+        }
+        result: Dict[str, Any] = {
+            "ok": True,
+            "provider": self.name,
+            "instance_name": self._config.get("instance_name", ""),
+            "endpoint": self._config.get("endpoint", ""),
+            "memory_store_name": self._memory_store_name,
+            "scope": self._search_scope(),
+            "checks": checks,
+        }
+
+        if not self._client:
+            checks["initialize"]["error"] = "TableStore client is not initialized."
+            result["ok"] = False
+            return result
+
+        try:
+            payload = self._client.get_memory_store(self._memory_store_name)
+            checks["describe_memory_store"] = {
+                "ok": True,
+                "memory_store_name": payload.get("memoryStoreName", self._memory_store_name),
+            }
+        except Exception as exc:
+            checks["describe_memory_store"] = {
+                "ok": False,
+                "error": str(exc),
+            }
+            result["ok"] = False
+
+        try:
+            payload = self._client.list_memories(
+                self._memory_store_name,
+                self._search_scope(),
+                limit=5,
+            )
+            memories = payload.get("memories", []) or []
+            checks["list_memories"] = {
+                "ok": True,
+                "memory_count": len(memories),
+                "has_next_token": bool(payload.get("nextToken")),
+            }
+        except Exception as exc:
+            checks["list_memories"] = {
+                "ok": False,
+                "error": str(exc),
+            }
+            result["ok"] = False
+
+        return result
 
     def prefetch(self, query: str, *, session_id: str = "") -> str:
         if self._prefetch_thread and self._prefetch_thread.is_alive():

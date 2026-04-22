@@ -40,8 +40,8 @@ def _print_json(payload: dict) -> None:
 
 def tablestore_command(args) -> None:
     sub = getattr(args, "tablestore_command", None)
-    if sub not in {"add", "search"}:
-        print("Usage: hermes tablestore-mem <add|search>")
+    if sub not in {"add", "search", "doctor"}:
+        print("Usage: hermes tablestore-mem <add|search|doctor>")
         sys.exit(2)
         return
 
@@ -78,6 +78,13 @@ def tablestore_command(args) -> None:
             result = json.loads(provider.handle_tool_call("tablestore_search", payload))
             _print_json(result)
             if isinstance(result, dict) and result.get("error"):
+                sys.exit(1)
+            return
+
+        if sub == "doctor":
+            result = provider.run_doctor()
+            _print_json(result)
+            if isinstance(result, dict) and not result.get("ok", False):
                 sys.exit(1)
             return
     except ValueError as exc:
@@ -125,3 +132,6 @@ def register_cli(subparser) -> None:
         help="Optional metadata filter. Repeat for multiple values.",
     )
     search_parser.set_defaults(func=tablestore_command)
+
+    doctor_parser = subs.add_parser("doctor", help="Run read-only diagnostics for TableStore")
+    doctor_parser.set_defaults(func=tablestore_command)
